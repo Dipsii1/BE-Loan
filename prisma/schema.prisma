@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+// ------------------
+// ENUMS
+// ------------------
+
+enum JenisKredit {
+  KREDIT_PRODUKTIF
+  MULTIGUNA
+  KPR
+  PENSIUN
+}
+
+enum Jaminan {
+  SERTIFIKAT
+  BPKB
+  SK_PEGAWAI
+}
+
+enum StatusKredit {
+  DIAJUKAN
+  DIPROSES
+  DITERIMA
+  DITOLAK
+}
+
+enum JenisKelamin {
+  L
+  P
+}
+
+enum StatusAkun {
+  AKTIF
+  NONAKTIF
+}
+
+enum ChangedRole {
+  ADMIN
+}
+
+// ------------------
+// MODELS
+// ------------------
+
+model Role {
+  id        Int    @id @default(autoincrement())
+  nama_role String @db.VarChar(50)
+
+  users User[]
+
+  @@map("role")
+}
+
+model User {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(50)
+  email      String   @unique @db.VarChar(50)
+  password   String   @db.VarChar(255)
+  no_phone   String   @db.VarChar(25)
+  id_role    Int      @default(1)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  role           Role                @relation(fields: [id_role], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  profile        Profile?
+  statusChanges  ApplicationStatus[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model CreditApplication {
+  id             Int         @id @default(autoincrement())
+  kode_pengajuan String      @unique @db.VarChar(20)
+  nik            String      @db.VarChar(20)
+  nama_lengkap   String      @db.VarChar(150)
+  alamat         String      @db.Text
+  tanggal_lahir  DateTime    @db.Date
+  email          String      @db.VarChar(150)
+  jenis_kredit   JenisKredit
+  plafond        Decimal     @db.Decimal(15, 2)
+  jaminan        Jaminan
+  created_at     DateTime    @default(now())
+
+  statuses ApplicationStatus[]
+
+  @@index([kode_pengajuan])
+  @@map("credit_application")
+}
+
+model ApplicationStatus {
+  id             Int          @id @default(autoincrement())
+  application_id Int
+  status         StatusKredit
+  changed_by     Int
+  changed_role   ChangedRole
+  catatan        String?      @db.Text
+  changed_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+
+  application CreditApplication @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user        User              @relation(fields: [changed_by], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([application_id])
+  @@map("application_status")
+}
+
+model Profile {
+  id            Int            @id @default(autoincrement())
+  user_id       Int            @unique
+  nik           String?        @unique @db.VarChar(20)
+  nama_lengkap  String         @db.VarChar(150)
+  tempat_lahir  String?        @db.VarChar(100)
+  tanggal_lahir DateTime?      @db.Date
+  jenis_kelamin JenisKelamin?
+  alamat        String?        @db.Text
+  kota          String?        @db.VarChar(100)
+  provinsi      String?        @db.VarChar(100)
+  kode_pos      String?        @db.VarChar(10)
+  foto_profil   String?        @db.VarChar(255)
+  status_akun   StatusAkun     @default(AKTIF)
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([user_id])
+  @@index([nik])
+  @@map("profile")
+}
