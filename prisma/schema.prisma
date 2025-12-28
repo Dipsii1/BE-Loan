@@ -7,9 +7,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ------------------
-// ENUMS
-// ------------------
+/* ======================
+   ENUMS
+====================== */
 
 enum JenisKredit {
   KREDIT_PRODUKTIF
@@ -41,39 +41,35 @@ enum StatusAkun {
   NONAKTIF
 }
 
-enum ChangedRole {
-  ADMIN
-}
-
-// ------------------
-// MODELS
-// ------------------
+/* ======================
+   MODELS
+====================== */
 
 model Role {
-  id        Int    @id @default(autoincrement())
-  nama_role String @db.VarChar(50)
+  id        Int      @id
+  nama_role String   @unique @db.VarChar(50)
 
-  users User[]
+  profiles  Profile[]
 
-  @@map("role")
+  @@map("roles")
 }
 
-model User {
-  id         Int      @id @default(autoincrement())
-  name       String   @db.VarChar(50)
-  email      String   @unique @db.VarChar(50)
-  password   String   @db.VarChar(255)
-  no_phone   String   @db.VarChar(25)
-  id_role    Int      @default(1)
+model Profile {
+  id         String   @id @db.Uuid       // auth.users.id
+  name       String   @db.VarChar(100)
+  email      String   @unique
+  no_phone   String?  @db.VarChar(25)
+  role_id    Int
+
+  role       Role     @relation(fields: [role_id], references: [id])
+  credits    CreditApplication[]
+  statuses   ApplicationStatus[]
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  role          Role                @relation(fields: [id_role], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  profile       Profile?
-  statusChanges ApplicationStatus[]
-
-  @@index([email])
-  @@map("users")
+  @@index([role_id])
+  @@map("profiles")
 }
 
 model CreditApplication {
@@ -87,14 +83,17 @@ model CreditApplication {
   jenis_kredit   JenisKredit
   plafond        Decimal     @db.Decimal(15, 2)
   jaminan        Jaminan
+
+  profile_id     String      @db.Uuid
+  profile        Profile     @relation(fields: [profile_id], references: [id])
+
+  statuses       ApplicationStatus[]
+
   created_at     DateTime    @default(now())
   updated_at     DateTime    @updatedAt
 
-  statuses ApplicationStatus[]
-
   @@index([kode_pengajuan])
   @@index([nik])
-  @@index([email])
   @@map("credit_application")
 }
 
@@ -102,40 +101,12 @@ model ApplicationStatus {
   id             Int          @id @default(autoincrement())
   application_id Int
   status         StatusKredit
-  changed_by     Int
-  changed_role   ChangedRole
-  catatan        String?      @db.Text
+  changed_by     String       @db.Uuid
+  catatan        String?
   created_at     DateTime     @default(now())
-  updated_at     DateTime     @updatedAt
 
-  application CreditApplication @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  user        User              @relation(fields: [changed_by], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  application CreditApplication @relation(fields: [application_id], references: [id])
+  profile     Profile           @relation(fields: [changed_by], references: [id])
 
-  @@index([application_id])
-  @@index([status])
   @@map("application_status")
-}
-
-model Profile {
-  id            Int            @id @default(autoincrement())
-  user_id       Int            @unique
-  nik           String?        @unique @db.VarChar(20)
-  nama_lengkap  String         @db.VarChar(150)
-  tempat_lahir  String?        @db.VarChar(100)
-  tanggal_lahir DateTime?      @db.Date
-  jenis_kelamin JenisKelamin?
-  alamat        String?        @db.Text
-  kota          String?        @db.VarChar(100)
-  provinsi      String?        @db.VarChar(100)
-  kode_pos      String?        @db.VarChar(10)
-  foto_profil   String?        @db.VarChar(255)
-  status_akun   StatusAkun     @default(AKTIF)
-  created_at    DateTime       @default(now())
-  updated_at    DateTime       @updatedAt
-
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
-
-  @@index([user_id])
-  @@index([nik])
-  @@map("profile")
 }

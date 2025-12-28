@@ -3,6 +3,8 @@ var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
+var cors = require('cors');
+
 
 var indexRouter = require('./src/routes/index');
 var usersRouter = require('./src/routes/users');
@@ -22,28 +24,40 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// cors
+app.use(
+  cors({
+    origin: 'http://localhost:3000',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    
+  })
+);
+
+// preflight untuk semua route
+app.options('*', cors());
+
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/credit-aplications', creditAplicationsRouter);
 app.use('/application-status', statusApplicationsRouter);
 app.use('/profile', profileRouter);
 
-
-
-// catch 404 and forward to error handler
-app.use(function (req, res, next) {
+// 404 handler
+app.use((req, res, next) => {
   next(createError(404));
 });
 
-// error handler
-app.use(function (err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
+// Error handler (MUST use 4 parameters)
+app.use((err, req, res, next) => {
+  const env = req.app.get('env');
+  const statusCode = err.status || 500;
 
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+  res.status(statusCode).json({
+    error: true,
+    message: err.message,
+    ...(env === 'development' && { stack: err.stack }),
+  });
 });
 
 const port = process.env.APP_PORT || 4000;
@@ -52,5 +66,6 @@ const env = process.env.ENV_TYPE || 'production';
 app.listen(port, () => {
   console.log(`Server running in ${env} mode on port ${port}`);
 });
+
 
 module.exports = app;

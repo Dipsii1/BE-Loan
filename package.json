@@ -3,13 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "nodemon -w ./*.js ./*.js",
-    "start": "node ./bin/www"
+    "dev": "nodemon -w app.js",
+    "start": "node app.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.1",
     "@supabase/supabase-js": "^2.89.0",
     "cookie-parser": "~1.4.4",
+    "cors": "^2.8.5",
     "debug": "~2.6.9",
     "express": "~4.16.1",
     "http-errors": "~1.6.3",
