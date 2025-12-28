@@ -59,6 +59,8 @@ exports.getByKode = async function (req, res) {
 // CREATE
 exports.create = async function (req, res) {
   try {
+    const userId = req.user.id; // ambil user id dari token login
+
     const data = await prisma.creditApplication.create({
       data: {
         kode_pengajuan: req.body.kode_pengajuan,
@@ -66,25 +68,39 @@ exports.create = async function (req, res) {
         nama_lengkap: req.body.nama_lengkap,
         alamat: req.body.alamat,
         tanggal_lahir: new Date(req.body.tanggal_lahir),
-        email: req.body.email,
+        email: req.user.email, // gunakan email dari user yang login
         jenis_kredit: req.body.jenis_kredit,
         plafond: req.body.plafond,
         jaminan: req.body.jaminan,
+
+        // Status Awal
+        statuses: {
+          create: {
+            status: 'DIAJUKAN',
+            changed_by: userId,
+            changed_role: 'NASABAH',
+            catatan: 'Pengajuan dibuat oleh nasabah'
+          }
+        }
       },
+      include: {
+        statuses: true
+      }
     });
 
     return res.status(201).json({
       code: 201,
       message: 'Pengajuan kredit berhasil ditambahkan',
-      data: data,
+      data: data
     });
   } catch (error) {
     return res.status(400).json({
       code: 400,
-      message: error.message || 'Gagal menambahkan data',
+      message: error.message || 'Gagal menambahkan data'
     });
   }
 };
+
 
 // UPDATE
 exports.update = async function (req, res) {
