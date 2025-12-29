@@ -55,12 +55,23 @@ exports.getByKode = async function (req, res) {
   }
 };
 
-// create
 exports.create = async function (req, res) {
   try {
-    const userId = req.user.id;
+    // 1️⃣ Ambil profile dari user login
+    const profile = await prisma.profile.findUnique({
+      where: {
+        id: req.user.id, // auth.users.id
+      },
+    });
 
-    // ambil data terakhir
+    if (!profile) {
+      return res.status(404).json({
+        code: 404,
+        message: 'Profile user tidak ditemukan',
+      });
+    }
+
+    // 2️⃣ Ambil data terakhir untuk generate kode
     const lastData = await prisma.creditApplication.findFirst({
       where: {
         kode_pengajuan: {
@@ -81,6 +92,7 @@ exports.create = async function (req, res) {
 
     const kodePengajuan = `L-${String(nextNumber).padStart(3, '0')}`;
 
+    // 3️⃣ Create credit application
     const data = await prisma.creditApplication.create({
       data: {
         kode_pengajuan: kodePengajuan,
@@ -89,15 +101,17 @@ exports.create = async function (req, res) {
         tempat_lahir: req.body.tempat_lahir,
         tanggal_lahir: new Date(req.body.tanggal_lahir),
         alamat: req.body.alamat,
-        email: req.user.email,
+        email: profile.email, // 🔥 dari profile
         jenis_kredit: req.body.jenis_kredit,
         plafond: req.body.plafond,
         jaminan: req.body.jaminan,
+
+        profile_id: profile.id, // 🔥 relasi ke Profile
+
         statuses: {
           create: {
             status: 'DIAJUKAN',
-            changed_by: userId,
-            changed_role: 'NASABAH',
+            changed_by: profile.id, // 🔥 dari profile
             catatan: 'Pengajuan dibuat oleh nasabah',
           },
         },
@@ -119,6 +133,7 @@ exports.create = async function (req, res) {
     });
   }
 };
+
 
 
 // update
