@@ -58,16 +58,16 @@ exports.getById = async function (req, res) {
 
 // CREATE USER
 exports.create = async function (req, res) {
+  const { id, name, email, no_phone, role_id } = req.body;
+
+  if (!id || !name || !email || !role_id) {
+    return res.status(400).json({
+      code: 400,
+      message: 'Field wajib tidak lengkap',
+    });
+  }
+
   try {
-    const { id, name, email, no_phone, role_id } = req.body;
-
-    if (!id || !name || !email || !role_id) {
-      return res.status(400).json({
-        code: 400,
-        message: 'Field wajib tidak lengkap',
-      });
-    }
-
     const data = await prisma.profile.create({
       data: {
         id,
@@ -86,13 +86,23 @@ exports.create = async function (req, res) {
       message: 'User berhasil ditambahkan',
       data: data,
     });
+
   } catch (error) {
+
+    // jika gagal simpan ke database, hapus user di supabase
+    try {
+      await supabase.auth.admin.deleteUser(id);
+    } catch (e) {
+      console.error('gagal hapus user supabase', e.message);
+    }
+
     return res.status(400).json({
       code: 400,
       message: error.message || 'Gagal membuat user',
     });
   }
 };
+
 
 // UPDATE USER BY ID
 exports.update = async function (req, res) {

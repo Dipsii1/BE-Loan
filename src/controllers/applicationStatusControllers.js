@@ -1,16 +1,11 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// GET ALL
-exports.getAll = async function (req, res) {
+/**
+ * GET ALL (ADMIN)
+ */
+exports.getAll = async (req, res) => {
   try {
-    if (req.user.role !== 'ADMIN') {
-      return res.status(403).json({
-        code: 403,
-        message: 'Hanya admin yang dapat mengakses data ini',
-      });
-    }
-
     const data = await prisma.applicationStatus.findMany({
       include: {
         application: {
@@ -19,7 +14,7 @@ exports.getAll = async function (req, res) {
             nama_lengkap: true,
           },
         },
-        user: {
+        profile: {
           select: {
             id: true,
             name: true,
@@ -27,9 +22,7 @@ exports.getAll = async function (req, res) {
           },
         },
       },
-      orderBy: {
-        created_at: 'desc',
-      },
+      orderBy: { created_at: 'desc' },
     });
 
     return res.status(200).json({
@@ -40,23 +33,24 @@ exports.getAll = async function (req, res) {
   } catch (error) {
     return res.status(500).json({
       code: 500,
-      message: error.message || 'Terjadi kesalahan saat mengambil data',
+      message: error.message || 'Terjadi kesalahan',
     });
   }
 };
 
-// GET BY APPLICATION ID (USER / ADMIN)
-exports.getByApplication = async function (req, res) {
+/**
+ * GET BY APPLICATION ID (ADMIN / NASABAH PEMILIK)
+ */
+exports.getByApplication = async (req, res) => {
   try {
     const applicationId = Number(req.params.id);
-    const { role, email } = req.user;
 
-    // validasi kepemilikan pengajuan untuk nasabah
-    if (role !== 'ADMIN') {
+    // Jika bukan ADMIN, cek kepemilikan
+    if (req.user.role.name !== 'ADMIN') {
       const owned = await prisma.creditApplication.findFirst({
         where: {
           id: applicationId,
-          email: email,
+          email: req.user.email,
         },
       });
 
@@ -69,20 +63,13 @@ exports.getByApplication = async function (req, res) {
     }
 
     const data = await prisma.applicationStatus.findMany({
-      where: {
-        application_id: applicationId,
-      },
+      where: { application_id: applicationId },
       include: {
-        user: {
-          select: {
-            name: true,
-            email: true,
-          },
+        profile: {
+          select: { name: true, email: true },
         },
       },
-      orderBy: {
-        created_at: 'desc',
-      },
+      orderBy: { created_at: 'desc' },
     });
 
     if (data.length === 0) {
@@ -100,21 +87,16 @@ exports.getByApplication = async function (req, res) {
   } catch (error) {
     return res.status(500).json({
       code: 500,
-      message: error.message || 'Terjadi kesalahan saat mengambil data',
+      message: error.message || 'Terjadi kesalahan',
     });
   }
 };
 
-// CREATE
-exports.create = async function (req, res) {
+/**
+ * CREATE (ADMIN)
+ */
+exports.create = async (req, res) => {
   try {
-    if (req.user.role !== 'ADMIN') {
-      return res.status(403).json({
-        code: 403,
-        message: 'Hanya admin yang dapat menambahkan status',
-      });
-    }
-
     const { application_id, status, catatan } = req.body;
 
     if (!application_id || !status || !catatan) {
@@ -130,7 +112,7 @@ exports.create = async function (req, res) {
         status,
         catatan,
         changed_by: req.user.id,
-        changed_role: 'ADMIN',
+        changed_role: req.user.role.name,
       },
     });
 
@@ -147,16 +129,11 @@ exports.create = async function (req, res) {
   }
 };
 
-// UPDATE
-exports.update = async function (req, res) {
+/**
+ * UPDATE (ADMIN)
+ */
+exports.update = async (req, res) => {
   try {
-    if (req.user.role !== 'ADMIN') {
-      return res.status(403).json({
-        code: 403,
-        message: 'Hanya admin yang dapat memperbarui status',
-      });
-    }
-
     const { status, catatan } = req.body;
 
     if (!status || !catatan) {
@@ -167,14 +144,12 @@ exports.update = async function (req, res) {
     }
 
     const data = await prisma.applicationStatus.update({
-      where: {
-        id: Number(req.params.id),
-      },
+      where: { id: Number(req.params.id) },
       data: {
         status,
         catatan,
         changed_by: req.user.id,
-        changed_role: 'ADMIN',
+        changed_role: req.user.role.name,
       },
     });
 
@@ -191,20 +166,13 @@ exports.update = async function (req, res) {
   }
 };
 
-// DELETE
-exports.remove = async function (req, res) {
+/**
+ * DELETE (ADMIN)
+ */
+exports.remove = async (req, res) => {
   try {
-    if (req.user.role !== 'ADMIN') {
-      return res.status(403).json({
-        code: 403,
-        message: 'Hanya admin yang dapat menghapus status',
-      });
-    }
-
     await prisma.applicationStatus.delete({
-      where: {
-        id: Number(req.params.id),
-      },
+      where: { id: Number(req.params.id) },
     });
 
     return res.status(200).json({
