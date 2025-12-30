@@ -103,6 +103,36 @@ exports.create = async (req, res) => {
       })
     }
 
+    // ambil data terakhir berdasarkan kode_pengajuan
+    const lastData = await prisma.creditApplication.findFirst({
+      where: {
+        kode_pengajuan: {
+          startsWith: "L-",
+        },
+      },
+      orderBy: {
+        id: "desc",
+      },
+      select: {
+        kode_pengajuan: true,
+      },
+    })
+
+    let nextNumber = 1
+
+    if (lastData?.kode_pengajuan) {
+      const lastNumber = parseInt(
+        lastData.kode_pengajuan.replace("L-", ""),
+        10
+      )
+      if (!isNaN(lastNumber)) {
+        nextNumber = lastNumber + 1
+      }
+    }
+
+    // format jadi 4 digit: 0001
+    const kode_pengajuan = `L-${String(nextNumber).padStart(4, "0")}`
+
     const data = await prisma.creditApplication.create({
       data: {
         nik: req.body.nik,
@@ -115,12 +145,12 @@ exports.create = async (req, res) => {
         plafond: req.body.plafond,
         jaminan: req.body.jaminan,
         profile_id: userId,
-        kode_pengajuan: `L-${Date.now()}`,
+        kode_pengajuan,
         statuses: {
           create: {
-            status: 'DIAJUKAN',
+            status: "DIAJUKAN",
             changed_by: userId,
-            catatan: 'Pengajuan dibuat',
+            catatan: "Pengajuan dibuat",
           },
         },
       },
@@ -133,6 +163,7 @@ exports.create = async (req, res) => {
     })
   }
 }
+
 
 // UPDATE
 exports.update = async (req, res) => {
