@@ -1,9 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-/**
- * GET ALL (ADMIN)
- */
+// GET ALL (ADMIN)
 exports.getAll = async (req, res) => {
   try {
     const data = await prisma.applicationStatus.findMany({
@@ -38,9 +36,7 @@ exports.getAll = async (req, res) => {
   }
 };
 
-/**
- * GET BY APPLICATION ID (ADMIN / NASABAH PEMILIK)
- */
+// GET BY APPLICATION ID (ADMIN / NASABAH PEMILIK)
 exports.getByApplication = async (req, res) => {
   try {
     const applicationId = Number(req.params.id);
@@ -92,27 +88,48 @@ exports.getByApplication = async (req, res) => {
   }
 };
 
-/**
- * CREATE (ADMIN)
- */
+// CREATE (ADMIN)
 exports.create = async (req, res) => {
   try {
     const { application_id, status, catatan } = req.body;
 
-    if (!application_id || !status || !catatan) {
+    if (!application_id || !status) {
       return res.status(400).json({
         code: 400,
-        message: 'application_id, status, dan catatan wajib diisi',
+        message: 'application_id dan status wajib diisi',
+      });
+    }
+
+    // Cek application exists
+    const application = await prisma.creditApplication.findUnique({
+      where: { id: Number(application_id) },
+    });
+
+    if (!application) {
+      return res.status(404).json({
+        code: 404,
+        message: 'Pengajuan tidak ditemukan',
+      });
+    }
+
+    // Cek profile exists
+    const profile = await prisma.profile.findUnique({
+      where: { id: req.user.id },
+    });
+
+    if (!profile) {
+      return res.status(404).json({
+        code: 404,
+        message: 'Profile user tidak ditemukan',
       });
     }
 
     const data = await prisma.applicationStatus.create({
       data: {
-        application_id,
-        status,
-        catatan,
+        application_id: Number(application_id),
+        status: status.toUpperCase(),
+        catatan: catatan || `Status diubah menjadi ${status}`,
         changed_by: req.user.id,
-        changed_role: req.user.role.name,
       },
     });
 
@@ -122,16 +139,15 @@ exports.create = async (req, res) => {
       data,
     });
   } catch (error) {
-    return res.status(400).json({
-      code: 400,
-      message: error.message || 'Gagal menambahkan status',
+    console.error('CREATE STATUS ERROR:', error);
+    return res.status(500).json({
+      code: 500,
+      message: error.message,
     });
   }
 };
 
-/**
- * UPDATE (ADMIN)
- */
+// UPDATE (ADMIN)
 exports.update = async (req, res) => {
   try {
     const { status, catatan } = req.body;
@@ -166,9 +182,7 @@ exports.update = async (req, res) => {
   }
 };
 
-/**
- * DELETE (ADMIN)
- */
+// DELETE (ADMIN)
 exports.remove = async (req, res) => {
   try {
     await prisma.applicationStatus.delete({
