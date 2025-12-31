@@ -6,7 +6,7 @@
     "dev": "nodemon -w app.js",
     "start": "node app.js",
     "build": "prisma generate",
-    "vercel-build": "prisma generate && prisma migrate deploy"
+    "vercel-build": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^6.19.1",
