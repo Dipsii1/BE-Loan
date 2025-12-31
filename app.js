@@ -1,6 +1,5 @@
 var createError = require("http-errors")
 var express = require("express")
-var path = require("path")
 var cookieParser = require("cookie-parser")
 var logger = require("morgan")
 var cors = require("cors")
@@ -13,27 +12,26 @@ var profileRouter = require("./src/routes/profile")
 
 var app = express()
 
-// basic middleware
+// middleware
 app.use(logger("dev"))
 app.use(express.json())
 app.use(express.urlencoded({ extended: false }))
 app.use(cookieParser())
-app.use(express.static(path.join(__dirname, "public")))
 
-// cors configuration (harus di atas routes)
+// CORS
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: [
+      "http://localhost:3000",
+      "https://frontend-kamu.vercel.app"
+    ],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
   })
 )
 
-// handle preflight request
 app.options("*", cors())
 
-// disable cache (penting untuk fetch FE)
+// disable cache
 app.use((req, res, next) => {
   res.setHeader("Cache-Control", "no-store")
   res.setHeader("Pragma", "no-cache")
@@ -55,23 +53,14 @@ app.use((req, res, next) => {
 
 // error handler
 app.use((err, req, res, next) => {
-  const statusCode = err.status || 500
-
-  res.status(statusCode).json({
+  res.status(err.status || 500).json({
     error: true,
     message: err.message,
-    ...(req.app.get("env") === "development" && {
+    ...(process.env.NODE_ENV !== "production" && {
       stack: err.stack,
     }),
   })
 })
 
-// server
-const port = process.env.APP_PORT || 4000
-const env = process.env.ENV_TYPE || "development"
-
-app.listen(port, () => {
-  console.log(`Server running in ${env} mode on port ${port}`)
-})
-
+//  PENTING
 module.exports = app
