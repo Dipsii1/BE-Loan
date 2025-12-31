@@ -1,5 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma  = require('../config/prisma');
 
 // GET ALL USERS
 exports.getAll = async function (req, res) {
