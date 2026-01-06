@@ -8,17 +8,14 @@ var indexRouter = require("./src/routes/index")
 var usersRouter = require("./src/routes/users")
 var creditApplicationsRouter = require("./src/routes/creditAplications")
 var statusApplicationsRouter = require("./src/routes/applicationStatus")
-var profileRouter = require("./src/routes/profile")
 
 var app = express()
 
-// middleware
 app.use(logger("dev"))
 app.use(express.json())
 app.use(express.urlencoded({ extended: false }))
 app.use(cookieParser())
 
-// CORS
 app.use(
   cors({
     origin: [
@@ -31,7 +28,6 @@ app.use(
 
 app.options("*", cors())
 
-// disable cache
 app.use((req, res, next) => {
   res.setHeader("Cache-Control", "no-store")
   res.setHeader("Pragma", "no-cache")
@@ -39,27 +35,24 @@ app.use((req, res, next) => {
   next()
 })
 
-// routes
 app.use("/", indexRouter)
 app.use("/users", usersRouter)
 app.use("/credit-applications", creditApplicationsRouter)
 app.use("/application-status", statusApplicationsRouter)
-app.use("/profile", profileRouter)
 
-// 404 handler
 app.use((req, res, next) => {
   next(createError(404, "Endpoint tidak ditemukan"))
 })
 
-// error handler
 app.use((err, req, res, next) => {
   res.status(err.status || 500).json({
     error: true,
     message: err.message,
-    ...(process.env.NODE_ENV !== "production" && {
-      stack: err.stack,
-    }),
   })
 })
 
-module.exports = app
+
+const PORT = process.env.PORT || 3000
+app.listen(PORT, () => {
+  console.log(`Server berjalan di port ${PORT}`)
+})
