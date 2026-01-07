@@ -1,26 +1,45 @@
 const prisma = require('../config/prisma');
 
 // Helper function untuk menghitung durasi SLA
-const calculateSLA = async (applicationId, newStatus) => {
+const calculateSLA = async (applicationId, newStatus, prismaClient = null) => {
   try {
+    const client = prismaClient || prisma;
+
     // Ambil status terakhir sebelum perubahan
-    const lastStatus = await prisma.applicationStatus.findFirst({
+    const lastStatus = await client.applicationStatus.findFirst({
       where: { application_id: applicationId },
       orderBy: { created_at: 'desc' },
     });
 
     if (!lastStatus) {
-      // Ini adalah status pertama (DIAJUKAN)
+      // status pertama (DIAJUKAN)
+      console.log('Status pertama, tidak perlu tracking SLA');
+      return null;
+    }
+
+    // Cek apakah status benar-benar berubah
+    if (lastStatus.status === newStatus) {
+      console.log('Status tidak berubah, skip SLA tracking');
       return null;
     }
 
     // Hitung durasi dari status sebelumnya ke status baru
-    const startTime = lastStatus.created_at;
+    const startTime = new Date(lastStatus.created_at);
     const endTime = new Date();
-    const durationMinutes = Math.floor((endTime - startTime) / (1000 * 60));
+    const durationMs = endTime - startTime;
+    const durationMinutes = Math.floor(durationMs / (1000 * 60));
+
+    // Validasi durasi tidak negatif
+    if (durationMinutes < 0) {
+      console.error('ERROR: Duration negatif!', {
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString()
+      });
+      return null;
+    }
 
     // Simpan ke tabel ApplicationSLA
-    await prisma.applicationSLA.create({
+    const slaRecord = await client.applicationSLA.create({
       data: {
         application_id: applicationId,
         from_status: lastStatus.status,
@@ -32,13 +51,26 @@ const calculateSLA = async (applicationId, newStatus) => {
       },
     });
 
+    console.log('SLA tracked successfully:', {
+      application_id: applicationId,
+      from: lastStatus.status,
+      to: newStatus,
+      duration: durationMinutes,
+    });
+
     return {
       from: lastStatus.status,
       to: newStatus,
       duration: durationMinutes,
+      sla_id: slaRecord.id,
     };
   } catch (error) {
-    console.error('ERROR CALCULATE SLA:', error);
+    console.error('ERROR CALCULATE SLA:', {
+      applicationId,
+      newStatus,
+      error: error.message,
+      stack: error.stack,
+    });
     throw error;
   }
 };
@@ -78,7 +110,7 @@ exports.getAll = async (req, res) => {
   }
 };
 
-// GET BY APPLICATION ID (ADMIN / NASABAH PEMILIK)
+// GET BY APPLICATION ID
 exports.getByApplication = async (req, res) => {
   try {
     const applicationId = Number(req.params.id);
@@ -175,12 +207,16 @@ exports.create = async (req, res) => {
       });
     }
 
-    // transaction untuk create status dan hitung SLA
+    // Transaction untuk create status dan hitung SLA
     const result = await prisma.$transaction(async (tx) => {
-      // Hitung dan simpan SLA
-      const slaInfo = await calculateSLA(Number(application_id), status.toUpperCase());
+      // Hitung SLA SEBELUM membuat status baru
+      const slaInfo = await calculateSLA(
+        Number(application_id),
+        status.toUpperCase(),
+        tx
+      );
 
-      // Buat status baru
+      //  Buat status baru
       const newStatus = await tx.applicationStatus.create({
         data: {
           application_id: Number(application_id),
@@ -211,12 +247,12 @@ exports.create = async (req, res) => {
     console.error('CREATE STATUS ERROR:', error);
     return res.status(500).json({
       code: 500,
-      message: error.message,
+      message: error.message || 'Terjadi kesalahan saat menambahkan status',
     });
   }
 };
 
-// UPDATE - Dengan SLA Tracking
+// UPDATE
 exports.update = async (req, res) => {
   try {
     const { status, catatan } = req.body;
@@ -238,7 +274,7 @@ exports.update = async (req, res) => {
       });
     }
 
-    // Ambil status yang akan diupdate untuk mendapatkan application_id
+    // Mengambil status
     const existingStatus = await prisma.applicationStatus.findUnique({
       where: { id: statusId },
     });
@@ -250,12 +286,17 @@ exports.update = async (req, res) => {
       });
     }
 
-    // Gunakan transaction
+    // transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Hitung SLA jika status berubah
       let slaInfo = null;
+
+      // Hitung SLA HANYA jika status berubah
       if (existingStatus.status !== status.toUpperCase()) {
-        slaInfo = await calculateSLA(existingStatus.application_id, status.toUpperCase());
+        slaInfo = await calculateSLA(
+          existingStatus.application_id,
+          status.toUpperCase(),
+          tx
+        );
       }
 
       // Update status
@@ -265,6 +306,7 @@ exports.update = async (req, res) => {
           status: status.toUpperCase(),
           catatan,
           changed_by: req.user.id,
+          updated_at: new Date(), // Explicit update timestamp
         },
         include: {
           profile: {

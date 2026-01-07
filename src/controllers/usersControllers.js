@@ -63,7 +63,7 @@ exports.create = async function (req, res) {
   if (!id || !name || !email || !role_id) {
     return res.status(400).json({
       code: 400,
-      message: 'Field wajib diisi',
+      message: 'Field id, name, email, dan role_id wajib diisi',
     });
   }
 
@@ -82,6 +82,7 @@ exports.create = async function (req, res) {
 
     let agent_code = null;
 
+    // Generate agent code jika role_id = 2 (Agent)
     if (role_id === 2) {
       let isUnique = false;
 
@@ -93,7 +94,7 @@ exports.create = async function (req, res) {
           randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
         }
 
-        const randomCode = 'AG -'+ ' ' + randomPart;
+        const randomCode = `AG-${randomPart}`;
 
         const existingAgent = await prisma.profile.findUnique({
           where: { agent_code: randomCode },
@@ -105,7 +106,6 @@ exports.create = async function (req, res) {
         }
       }
     }
-
 
     const data = await prisma.profile.create({
       data: {
@@ -127,10 +127,12 @@ exports.create = async function (req, res) {
       data,
     });
   } catch (error) {
+    // Rollback: hapus user dari Supabase Auth jika gagal create profile
     try {
       await supabase.auth.admin.deleteUser(id);
-    } catch (e) {
-      console.error('Rollback gagal hapus user supabase:', e.message);
+      console.log('Rollback: User berhasil dihapus dari Supabase Auth');
+    } catch (rollbackError) {
+      console.error('Rollback gagal hapus user supabase:', rollbackError.message);
     }
 
     return res.status(400).json({
@@ -146,7 +148,7 @@ exports.update = async function (req, res) {
     const { id } = req.params;
     const { name, email, no_phone, nasabah_code } = req.body;
 
-    // validasi dulu profile ada
+    // Validasi profile ada
     const existing = await prisma.profile.findUnique({ where: { id } });
 
     if (!existing) {
@@ -156,18 +158,26 @@ exports.update = async function (req, res) {
       });
     }
 
-    // lalu update auth
-    if (email !== undefined) {
-      await supabase.auth.admin.updateUserById(id, { email });
+    // Update email di Supabase Auth jika email berubah
+    if (email !== undefined && email !== existing.email) {
+      try {
+        await supabase.auth.admin.updateUserById(id, { email });
+      } catch (authError) {
+        return res.status(400).json({
+          code: 400,
+          message: `Gagal update email di Supabase Auth: ${authError.message}`,
+        });
+      }
     }
 
-
+    // Build update data
     const updateData = {};
     if (name !== undefined) updateData.name = name;
     if (no_phone !== undefined) updateData.no_phone = no_phone;
     if (email !== undefined) updateData.email = email;
     if (nasabah_code !== undefined) updateData.nasabah_code = nasabah_code;
 
+    // Update profile di database
     const data = await prisma.profile.update({
       where: { id },
       data: updateData,
@@ -194,11 +204,24 @@ exports.update = async function (req, res) {
   }
 };
 
-// delete user (hapus dari supabase auth)
+// delete user (hapus dari supabase auth dan cascade delete di database)
 exports.remove = async function (req, res) {
   try {
     const { id } = req.params;
 
+    // Cek apakah user ada
+    const existing = await prisma.profile.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      return res.status(404).json({
+        code: 404,
+        message: 'User tidak ditemukan',
+      });
+    }
+
+    // Hapus dari Supabase Auth (akan trigger cascade delete di database)
     await supabase.auth.admin.deleteUser(id);
 
     return res.status(200).json({

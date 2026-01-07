@@ -1,4 +1,4 @@
-const prisma  = require('../config/prisma');
+const prisma = require('../config/prisma');
 
 // GET ALL (ADMIN / PUBLIC)
 exports.getAll = async (req, res) => {
@@ -19,11 +19,15 @@ exports.getAll = async (req, res) => {
       orderBy: { created_at: 'desc' },
     })
 
-    res.json({ code: 200, data })
+    return res.status(200).json({
+      code: 200,
+      message: 'Data pengajuan kredit berhasil ditemukan',
+      data
+    })
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       code: 500,
-      message: err.message,
+      message: err.message || 'Terjadi kesalahan',
     })
   }
 }
@@ -43,11 +47,15 @@ exports.getByUserId = async (req, res) => {
       orderBy: { created_at: 'desc' },
     })
 
-    res.json({ code: 200, data })
+    return res.status(200).json({
+      code: 200,
+      message: 'Data pengajuan kredit berhasil ditemukan',
+      data
+    })
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       code: 500,
-      message: err.message,
+      message: err.message || 'Terjadi kesalahan',
     })
   }
 }
@@ -68,14 +76,20 @@ exports.getById = async (req, res) => {
 
     if (!data) {
       return res.status(404).json({
+        code: 404,
         message: 'Data tidak ditemukan',
       })
     }
 
-    res.json({ data })
+    return res.status(200).json({
+      code: 200,
+      message: 'Data pengajuan kredit berhasil ditemukan',
+      data
+    })
   } catch (err) {
-    res.status(500).json({
-      message: err.message,
+    return res.status(500).json({
+      code: 500,
+      message: err.message || 'Terjadi kesalahan',
     })
   }
 }
@@ -155,10 +169,15 @@ exports.create = async (req, res) => {
       },
     })
 
-    res.status(201).json({ data })
+    return res.status(201).json({
+      code: 201,
+      message: 'Pengajuan kredit berhasil dibuat',
+      data
+    })
   } catch (err) {
-    res.status(400).json({
-      message: err.message,
+    return res.status(400).json({
+      code: 400,
+      message: err.message || 'Gagal membuat pengajuan kredit',
     })
   }
 }
@@ -178,6 +197,7 @@ exports.update = async (req, res) => {
 
     if (!existing) {
       return res.status(403).json({
+        code: 403,
         message: 'Tidak punya akses',
       })
     }
@@ -187,10 +207,15 @@ exports.update = async (req, res) => {
       data: req.body,
     })
 
-    res.json({ data })
+    return res.status(200).json({
+      code: 200,
+      message: 'Pengajuan kredit berhasil diperbarui',
+      data
+    })
   } catch (err) {
-    res.status(500).json({
-      message: err.message,
+    return res.status(500).json({
+      code: 500,
+      message: err.message || 'Gagal memperbarui pengajuan kredit',
     })
   }
 }
@@ -209,6 +234,7 @@ exports.remove = async (req, res) => {
 
     if (!existing) {
       return res.status(403).json({
+        code: 403,
         message: 'Tidak punya akses',
       })
     }
@@ -217,12 +243,14 @@ exports.remove = async (req, res) => {
       where: { id },
     })
 
-    res.json({
-      message: 'Berhasil dihapus',
+    return res.status(200).json({
+      code: 200,
+      message: 'Pengajuan kredit berhasil dihapus',
     })
   } catch (err) {
-    res.status(500).json({
-      message: err.message,
+    return res.status(500).json({
+      code: 500,
+      message: err.message || 'Gagal menghapus pengajuan kredit',
     })
   }
 }
