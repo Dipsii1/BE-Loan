@@ -66,6 +66,8 @@ model ApplicationStatus {
   application    CreditApplication @relation(fields: [application_id], references: [id])
   profile        Profile           @relation(fields: [changed_by], references: [id])
 
+  slas           ApplicationSLA[]
+
   @@map("application_status")
 }
 
