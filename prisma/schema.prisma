@@ -69,6 +69,24 @@ model ApplicationStatus {
   @@map("application_status")
 }
 
+model ApplicationSLA {
+  id                Int               @id @default(autoincrement())
+  application_id    Int
+  from_status       StatusKredit
+  to_status         StatusKredit
+  start_time        DateTime
+  end_time          DateTime
+  duration_minutes Int
+  catatan           String?
+  created_at        DateTime          @default(now())
+
+  application       CreditApplication @relation(fields: [application_id], references: [id], onDelete: Cascade)
+
+  @@index([application_id])
+  @@map("application_sla")
+}
+
+
 enum JenisKredit {
   KREDIT_PRODUKTIF
   MULTIGUNA

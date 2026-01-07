@@ -1,6 +1,49 @@
-const prisma  = require('../config/prisma');
+const prisma = require('../config/prisma');
 
-// GET ALL (ADMIN)
+// Helper function untuk menghitung durasi SLA
+const calculateSLA = async (applicationId, newStatus) => {
+  try {
+    // Ambil status terakhir sebelum perubahan
+    const lastStatus = await prisma.applicationStatus.findFirst({
+      where: { application_id: applicationId },
+      orderBy: { created_at: 'desc' },
+    });
+
+    if (!lastStatus) {
+      // Ini adalah status pertama (DIAJUKAN)
+      return null;
+    }
+
+    // Hitung durasi dari status sebelumnya ke status baru
+    const startTime = lastStatus.created_at;
+    const endTime = new Date();
+    const durationMinutes = Math.floor((endTime - startTime) / (1000 * 60));
+
+    // Simpan ke tabel ApplicationSLA
+    await prisma.applicationSLA.create({
+      data: {
+        application_id: applicationId,
+        from_status: lastStatus.status,
+        to_status: newStatus,
+        start_time: startTime,
+        end_time: endTime,
+        duration_minutes: durationMinutes,
+        catatan: `Transisi dari ${lastStatus.status} ke ${newStatus}`,
+      },
+    });
+
+    return {
+      from: lastStatus.status,
+      to: newStatus,
+      duration: durationMinutes,
+    };
+  } catch (error) {
+    console.error('ERROR CALCULATE SLA:', error);
+    throw error;
+  }
+};
+
+// GET ALL
 exports.getAll = async (req, res) => {
   try {
     const data = await prisma.applicationStatus.findMany({
@@ -87,7 +130,7 @@ exports.getByApplication = async (req, res) => {
   }
 };
 
-// CREATE (ADMIN)
+// CREATE (ADMIN) - Dengan SLA Tracking
 exports.create = async (req, res) => {
   try {
     const { application_id, status, catatan } = req.body;
@@ -96,6 +139,15 @@ exports.create = async (req, res) => {
       return res.status(400).json({
         code: 400,
         message: 'application_id dan status wajib diisi',
+      });
+    }
+
+    // Validasi status enum
+    const validStatuses = ['DIAJUKAN', 'DIPROSES', 'DITERIMA', 'DITOLAK'];
+    if (!validStatuses.includes(status.toUpperCase())) {
+      return res.status(400).json({
+        code: 400,
+        message: `Status harus salah satu dari: ${validStatuses.join(', ')}`,
       });
     }
 
@@ -123,19 +175,37 @@ exports.create = async (req, res) => {
       });
     }
 
-    const data = await prisma.applicationStatus.create({
-      data: {
-        application_id: Number(application_id),
-        status: status.toUpperCase(),
-        catatan: catatan || `Status diubah menjadi ${status}`,
-        changed_by: req.user.id,
-      },
+    // transaction untuk create status dan hitung SLA
+    const result = await prisma.$transaction(async (tx) => {
+      // Hitung dan simpan SLA
+      const slaInfo = await calculateSLA(Number(application_id), status.toUpperCase());
+
+      // Buat status baru
+      const newStatus = await tx.applicationStatus.create({
+        data: {
+          application_id: Number(application_id),
+          status: status.toUpperCase(),
+          catatan: catatan || `Status diubah menjadi ${status}`,
+          changed_by: req.user.id,
+        },
+        include: {
+          profile: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      return { newStatus, slaInfo };
     });
 
     return res.status(201).json({
       code: 201,
       message: 'Status pengajuan berhasil ditambahkan',
-      data,
+      data: result.newStatus,
+      sla: result.slaInfo,
     });
   } catch (error) {
     console.error('CREATE STATUS ERROR:', error);
@@ -146,10 +216,11 @@ exports.create = async (req, res) => {
   }
 };
 
-// UPDATE (ADMIN)
+// UPDATE - Dengan SLA Tracking
 exports.update = async (req, res) => {
   try {
     const { status, catatan } = req.body;
+    const statusId = Number(req.params.id);
 
     if (!status || !catatan) {
       return res.status(400).json({
@@ -158,22 +229,64 @@ exports.update = async (req, res) => {
       });
     }
 
-    const data = await prisma.applicationStatus.update({
-      where: { id: Number(req.params.id) },
-      data: {
-        status,
-        catatan,
-        changed_by: req.user.id,
-        changed_role: req.user.role.name,
-      },
+    // Validasi status enum
+    const validStatuses = ['DIAJUKAN', 'DIPROSES', 'DITERIMA', 'DITOLAK'];
+    if (!validStatuses.includes(status.toUpperCase())) {
+      return res.status(400).json({
+        code: 400,
+        message: `Status harus salah satu dari: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    // Ambil status yang akan diupdate untuk mendapatkan application_id
+    const existingStatus = await prisma.applicationStatus.findUnique({
+      where: { id: statusId },
+    });
+
+    if (!existingStatus) {
+      return res.status(404).json({
+        code: 404,
+        message: 'Status tidak ditemukan',
+      });
+    }
+
+    // Gunakan transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Hitung SLA jika status berubah
+      let slaInfo = null;
+      if (existingStatus.status !== status.toUpperCase()) {
+        slaInfo = await calculateSLA(existingStatus.application_id, status.toUpperCase());
+      }
+
+      // Update status
+      const updatedStatus = await tx.applicationStatus.update({
+        where: { id: statusId },
+        data: {
+          status: status.toUpperCase(),
+          catatan,
+          changed_by: req.user.id,
+        },
+        include: {
+          profile: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      return { updatedStatus, slaInfo };
     });
 
     return res.status(200).json({
       code: 200,
       message: 'Status pengajuan berhasil diperbarui',
-      data,
+      data: result.updatedStatus,
+      sla: result.slaInfo,
     });
   } catch (error) {
+    console.error('UPDATE STATUS ERROR:', error);
     return res.status(400).json({
       code: 400,
       message: error.message || 'Gagal memperbarui status',
@@ -181,7 +294,7 @@ exports.update = async (req, res) => {
   }
 };
 
-// DELETE (ADMIN)
+// DELETE 
 exports.remove = async (req, res) => {
   try {
     await prisma.applicationStatus.delete({
@@ -196,6 +309,65 @@ exports.remove = async (req, res) => {
     return res.status(400).json({
       code: 400,
       message: error.message || 'Gagal menghapus status',
+    });
+  }
+};
+
+// GET SLA BY APPLICATION ID
+exports.getSLAByApplication = async (req, res) => {
+  try {
+    const applicationId = Number(req.params.id);
+
+    const slaData = await prisma.applicationSLA.findMany({
+      where: { application_id: applicationId },
+      orderBy: { created_at: 'asc' },
+    });
+
+    // Hitung total durasi
+    const totalDuration = slaData.reduce((sum, sla) => sum + sla.duration_minutes, 0);
+
+    return res.status(200).json({
+      code: 200,
+      message: 'Data SLA berhasil ditemukan',
+      data: {
+        transitions: slaData,
+        total_duration_minutes: totalDuration,
+        total_duration_hours: (totalDuration / 60).toFixed(2),
+        total_duration_days: (totalDuration / (60 * 24)).toFixed(2),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      code: 500,
+      message: error.message || 'Terjadi kesalahan',
+    });
+  }
+};
+
+// GET ALL SLA - untuk monitoring
+exports.getAllSLA = async (req, res) => {
+  try {
+    const slaData = await prisma.applicationSLA.findMany({
+      include: {
+        application: {
+          select: {
+            kode_pengajuan: true,
+            nama_lengkap: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    return res.status(200).json({
+      code: 200,
+      message: 'Data SLA berhasil ditemukan',
+      data: slaData,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      code: 500,
+      message: error.message || 'Terjadi kesalahan',
     });
   }
 };
