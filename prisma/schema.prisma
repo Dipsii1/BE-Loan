@@ -44,17 +44,19 @@ model CreditApplication {
   jenis_kredit   JenisKredit
   plafond        Decimal             @db.Decimal(15, 2)
   jaminan        Jaminan
-  created_at     DateTime            @default(now())
-  profile_id     String              @db.Uuid
-  updated_at     DateTime            @updatedAt
   tempat_lahir   String              @db.VarChar(100)
+
+  profile_id     String              @db.Uuid
+  created_at     DateTime            @default(now())
+  updated_at     DateTime            @updatedAt
+
   statuses       ApplicationStatus[]
+  slas           ApplicationSLA[]  
   profile        Profile             @relation(fields: [profile_id], references: [id])
 
-  @@index([kode_pengajuan])
-  @@index([nik])
   @@map("credit_application")
 }
+
 
 model ApplicationStatus {
   id             Int               @id @default(autoincrement())
@@ -65,8 +67,6 @@ model ApplicationStatus {
   changed_by     String            @db.Uuid
   application    CreditApplication @relation(fields: [application_id], references: [id])
   profile        Profile           @relation(fields: [changed_by], references: [id])
-
-  slas           ApplicationSLA[]
 
   @@map("application_status")
 }
