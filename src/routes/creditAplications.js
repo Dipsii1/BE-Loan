@@ -1,13 +1,13 @@
-// const express = require('express');
-// const router = express.Router();
-// const controller = require('../controllers/creditAplicationControllers');
-// const { authenticate } = require('../middleware/auth');
+const express = require('express');
+const router = express.Router();
+const controller = require('../controllers/creditAplicationControllers');
+const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
-// router.get('/', controller.getAll);
-// router.get('/my', authenticate, controller.getByUserId);
-// router.get('/:id', authenticate, controller.getById);
-// router.post('/', authenticate, controller.create);
-// router.put('/:id', authenticate, controller.update);
-// router.delete('/:id', authenticate, controller.remove);
+router.get('/', authenticateToken, authorizeRole('Admin'), controller.getAllApplications);
+router.get('/my', authenticateToken, controller.getApplicationsByUser);
+router.get('/:id', authenticateToken, controller.getApplicationById);
+router.post('/', authenticateToken, controller.createApplication);
+router.put('/:id', authenticateToken, controller.updateApplication);
+router.delete('/:id', authenticateToken, controller.deleteApplication);
 
-// module.exports = router;
+module.exports = router;
