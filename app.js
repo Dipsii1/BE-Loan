@@ -21,7 +21,9 @@ app.use(cookieParser());
 // CORS
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://loan-mu-nine.vercel.app"
+  "https://loan-mu-nine.vercel.app",
+  "https://orangered-dragonfly-199687.hostingersite.com/"
+  
 ];
 
 app.use(cors({
@@ -64,8 +66,10 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT;
 
 app.listen(PORT, () => {
   console.log(`✅ Server berjalan di port ${PORT}`);
 });
+
+module.exports = app;
