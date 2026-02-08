@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "node app.js",
-    "start": "node app.js"
+    "start": "node app.js",
+    "build": "echo \"Express backend – no build step\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.89.0",
