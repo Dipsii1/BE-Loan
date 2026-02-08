@@ -56,11 +56,34 @@ const getApplicationsByUser = async (req, res) => {
       });
     }
 
-    const data = await db
+    const applications = await db
       .select()
       .from(creditApplication)
       .where(eq(creditApplication.userId, req.user.id))
       .orderBy(desc(creditApplication.createdAt));
+
+    // Get statuses for each application
+    const data = await Promise.all(
+      applications.map(async (app) => {
+        const statuses = await db
+          .select()
+          .from(applicationStatus)
+          .where(eq(applicationStatus.applicationId, app.id))
+          .orderBy(desc(applicationStatus.createdAt));
+
+        return {
+          id: app.id,
+          kode_pengajuan: app.kodePengajuan,
+          nama_lengkap: app.namaLengkap,
+          email: app.email,
+          jenis_kredit: app.jenisKredit,
+          plafond: app.plafond,
+          jaminan: app.jaminan,
+          created_at: app.createdAt,
+          statuses,
+        };
+      })
+    );
 
     return res.status(200).json({
       success: true,
