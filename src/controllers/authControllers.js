@@ -1,7 +1,7 @@
 const { db } = require('../lib/db');
 const { users } = require('../lib/schema/users');
 const { roles } = require('../lib/schema/roles');
-const { eq } = require('drizzle-orm');
+const { eq,sql } = require('drizzle-orm');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
@@ -285,7 +285,7 @@ const getCurrentUser = async (req, res) => {
       });
     }
 
-    const userResult = await db
+    const result = await db
       .select({
         id: users.id,
         name: users.name,
@@ -296,37 +296,52 @@ const getCurrentUser = async (req, res) => {
         role_id: users.roleId,
         created_at: users.createdAt,
         updated_at: users.updatedAt,
-        role: {
-          id: roles.id,
-          nama_role: roles.namaRole,
-          deskripsi: roles.deskripsi,
-        },
+
+        role_id_ref: roles.id,
+        role_name: roles.namaRole,
       })
       .from(users)
       .leftJoin(roles, eq(users.roleId, roles.id))
       .where(eq(users.id, req.user.id))
       .limit(1);
 
-    if (userResult.length === 0) {
+    if (result.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'User tidak ditemukan',
       });
     }
 
-    const userData = userResult[0];
+    const row = result[0];
+
+    const response = {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      no_phone: row.no_phone,
+      agent_code: row.agent_code,
+      nasabah_code: row.nasabah_code,
+      role_id: row.role_id,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      role: row.role_id_ref
+        ? {
+            id: row.role_id_ref,
+            nama_role: row.role_name,
+          }
+        : null,
+    };
 
     return res.status(200).json({
       success: true,
       message: 'Berhasil mendapatkan data user',
-      data: userData,
+      data: response,
     });
   } catch (error) {
-    console.error('Error in get current user:', error);
+    console.error('Get current user error:', error);
     return res.status(500).json({
       success: false,
       message: 'Terjadi kesalahan pada server',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
