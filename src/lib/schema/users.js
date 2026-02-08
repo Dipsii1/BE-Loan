@@ -1,0 +1,34 @@
+const {
+  pgTable,
+  varchar,
+  integer,
+  timestamp,
+  index
+} = require("drizzle-orm/pg-core");
+
+const { roles } = require("./roles");
+
+exports.users = pgTable(
+  "users",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey(),
+
+    name: varchar("name", { length: 100 }).notNull(),
+    email: varchar("email", { length: 150 }).notNull().unique(),
+    password: varchar("password", { length: 255 }).notNull(),
+    noPhone: varchar("no_phone", { length: 25 }),
+    agentCode: varchar("agent_code", { length: 50 }).unique(),
+    nasabahCode: varchar("nasabah_code", { length: 50 }).unique(),
+
+    roleId: integer("role_id")
+      .notNull()
+      .references(() => roles.id),
+
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow()
+  },
+  (table) => ({
+    roleIdx: index("users_role_id_idx").on(table.roleId)
+  })
+);

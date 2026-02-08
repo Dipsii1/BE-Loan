@@ -1,18 +1,28 @@
-const prisma = require('../config/prisma');
+const { db } = require('../lib/db');
+const { applicationStatus } = require('../lib/schema/applicationStatus');
+const { applicationSla } = require('../lib/schema/applicationSLA');
+const { creditApplication } = require('../lib/schema/creditApplication');
+const { users } = require('../lib/schema/users');
+const { eq, desc, asc, and } = require('drizzle-orm');
 
-// Helper function untuk menghitung durasi SLA
-const calculateSLA = async (applicationId, newStatus, prismaClient = null) => {
+/**
+ * HELPER: Calculate SLA
+ */
+const calculateSLA = async (applicationId, newStatus, transaction = null) => {
   try {
-    const client = prismaClient || prisma;
+    const dbClient = transaction || db;
 
     // Ambil status terakhir sebelum perubahan
-    const lastStatus = await client.applicationStatus.findFirst({
-      where: { application_id: applicationId },
-      orderBy: { created_at: 'desc' },
-    });
+    const lastStatusResult = await dbClient
+      .select()
+      .from(applicationStatus)
+      .where(eq(applicationStatus.applicationId, applicationId))
+      .orderBy(desc(applicationStatus.createdAt))
+      .limit(1);
+
+    const lastStatus = lastStatusResult[0];
 
     if (!lastStatus) {
-      // status pertama (DIAJUKAN)
       console.log('Status pertama, tidak perlu tracking SLA');
       return null;
     }
@@ -24,7 +34,7 @@ const calculateSLA = async (applicationId, newStatus, prismaClient = null) => {
     }
 
     // Hitung durasi dari status sebelumnya ke status baru
-    const startTime = new Date(lastStatus.created_at);
+    const startTime = new Date(lastStatus.createdAt);
     const endTime = new Date();
     const durationMs = endTime - startTime;
     const durationMinutes = Math.floor(durationMs / (1000 * 60));
@@ -33,23 +43,26 @@ const calculateSLA = async (applicationId, newStatus, prismaClient = null) => {
     if (durationMinutes < 0) {
       console.error('ERROR: Duration negatif!', {
         startTime: startTime.toISOString(),
-        endTime: endTime.toISOString()
+        endTime: endTime.toISOString(),
       });
       return null;
     }
 
     // Simpan ke tabel ApplicationSLA
-    const slaRecord = await client.applicationSLA.create({
-      data: {
-        application_id: applicationId,
-        from_status: lastStatus.status,
-        to_status: newStatus,
-        start_time: startTime,
-        end_time: endTime,
-        duration_minutes: durationMinutes,
+    const slaRecordResult = await dbClient
+      .insert(applicationSla)
+      .values({
+        applicationId,
+        fromStatus: lastStatus.status,
+        toStatus: newStatus,
+        startTime,
+        endTime,
+        durationMinutes,
         catatan: `Transisi dari ${lastStatus.status} ke ${newStatus}`,
-      },
-    });
+      })
+      .returning();
+
+    const slaRecord = slaRecordResult[0];
 
     console.log('SLA tracked successfully:', {
       application_id: applicationId,
@@ -75,58 +88,85 @@ const calculateSLA = async (applicationId, newStatus, prismaClient = null) => {
   }
 };
 
-// Get all application status
+/**
+ * GET ALL STATUS
+ */
 const getAllStatus = async (req, res) => {
   try {
-    const data = await prisma.applicationStatus.findMany({
-      include: {
+    const data = await db
+      .select({
+        id: applicationStatus.id,
+        application_id: applicationStatus.applicationId,
+        status: applicationStatus.status,
+        catatan: applicationStatus.catatan,
+        changed_by: applicationStatus.changedBy,
+        created_at: applicationStatus.createdAt,
         application: {
-          select: {
-            kode_pengajuan: true,
-            nama_lengkap: true,
-          },
+          kode_pengajuan: creditApplication.kodePengajuan,
+          nama_lengkap: creditApplication.namaLengkap,
         },
         user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
+          id: users.id,
+          name: users.name,
+          email: users.email,
         },
-      },
-      orderBy: { created_at: 'desc' },
-    });
+      })
+      .from(applicationStatus)
+      .leftJoin(
+        creditApplication,
+        eq(applicationStatus.applicationId, creditApplication.id)
+      )
+      .leftJoin(users, eq(applicationStatus.changedBy, users.id))
+      .orderBy(desc(applicationStatus.createdAt));
 
     return res.status(200).json({
       success: true,
       message: 'Data status pengajuan berhasil ditemukan',
-      data: data
+      data,
     });
   } catch (error) {
     console.error('Error in get all status:', error);
     return res.status(500).json({
       success: false,
       message: 'Terjadi kesalahan pada server',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
 
-// Get status by application ID
+/**
+ * GET STATUS BY APPLICATION
+ */
 const getStatusByApplication = async (req, res) => {
   try {
-    const applicationId = Number(req.params.id);
+    const { id } = req.params;
+
+    if (!id || isNaN(Number(id))) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID aplikasi tidak valid',
+      });
+    }
+
+    const applicationId = Number(id);
+
+    // Cek apakah aplikasi exists
+    const applicationExists = await db
+      .select()
+      .from(creditApplication)
+      .where(eq(creditApplication.id, applicationId))
+      .limit(1);
+
+    if (applicationExists.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pengajuan tidak ditemukan',
+      });
+    }
 
     // Jika bukan ADMIN, cek kepemilikan
     if (req.user.role_name !== 'Admin') {
-      const owned = await prisma.creditApplication.findFirst({
-        where: {
-          id: applicationId,
-          user_id: req.user.id,
-        },
-      });
-
-      if (!owned) {
+      if (applicationExists[0].userId !== req.user.id) {
         return res.status(403).json({
           success: false,
           message: 'Anda tidak memiliki akses ke pengajuan ini',
@@ -134,42 +174,42 @@ const getStatusByApplication = async (req, res) => {
       }
     }
 
-    const data = await prisma.applicationStatus.findMany({
-      where: { application_id: applicationId },
-      include: {
+    const data = await db
+      .select({
+        id: applicationStatus.id,
+        application_id: applicationStatus.applicationId,
+        status: applicationStatus.status,
+        catatan: applicationStatus.catatan,
+        changed_by: applicationStatus.changedBy,
+        created_at: applicationStatus.createdAt,
         user: {
-          select: { 
-            name: true, 
-            email: true 
-          },
+          name: users.name,
+          email: users.email,
         },
-      },
-      orderBy: { created_at: 'desc' },
-    });
-
-    if (data.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Status pengajuan tidak ditemukan',
-      });
-    }
+      })
+      .from(applicationStatus)
+      .leftJoin(users, eq(applicationStatus.changedBy, users.id))
+      .where(eq(applicationStatus.applicationId, applicationId))
+      .orderBy(desc(applicationStatus.createdAt));
 
     return res.status(200).json({
       success: true,
       message: 'Data status pengajuan berhasil ditemukan',
-      data: data
+      data,
     });
   } catch (error) {
     console.error('Error in get status by application:', error);
     return res.status(500).json({
       success: false,
       message: 'Terjadi kesalahan pada server',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
 
-// Create new status (ADMIN) - Dengan SLA Tracking
+/**
+ * CREATE STATUS (ADMIN) - Dengan SLA Tracking
+ */
 const createStatus = async (req, res) => {
   try {
     const { application_id, status, catatan } = req.body;
@@ -182,9 +222,19 @@ const createStatus = async (req, res) => {
       });
     }
 
+    // Validasi application_id adalah number
+    if (isNaN(Number(application_id))) {
+      return res.status(400).json({
+        success: false,
+        message: 'application_id harus berupa angka',
+      });
+    }
+
     // Validasi status enum
     const validStatuses = ['DIAJUKAN', 'DIPROSES', 'DITERIMA', 'DITOLAK'];
-    if (!validStatuses.includes(status.toUpperCase())) {
+    const upperStatus = status.toUpperCase();
+
+    if (!validStatuses.includes(upperStatus)) {
       return res.status(400).json({
         success: false,
         message: `Status harus salah satu dari: ${validStatuses.join(', ')}`,
@@ -192,11 +242,13 @@ const createStatus = async (req, res) => {
     }
 
     // Cek application exists
-    const application = await prisma.creditApplication.findUnique({
-      where: { id: Number(application_id) },
-    });
+    const applicationResult = await db
+      .select()
+      .from(creditApplication)
+      .where(eq(creditApplication.id, Number(application_id)))
+      .limit(1);
 
-    if (!application) {
+    if (applicationResult.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Pengajuan tidak ditemukan',
@@ -204,11 +256,13 @@ const createStatus = async (req, res) => {
     }
 
     // Cek user exists
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-    });
+    const userResult = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, req.user.id))
+      .limit(1);
 
-    if (!user) {
+    if (userResult.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'User tidak ditemukan',
@@ -216,33 +270,44 @@ const createStatus = async (req, res) => {
     }
 
     // Transaction untuk create status dan hitung SLA
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       // Hitung SLA SEBELUM membuat status baru
       const slaInfo = await calculateSLA(
         Number(application_id),
-        status.toUpperCase(),
+        upperStatus,
         tx
       );
 
       // Buat status baru
-      const newStatus = await tx.applicationStatus.create({
-        data: {
-          application_id: Number(application_id),
-          status: status.toUpperCase(),
-          catatan: catatan || `Status diubah menjadi ${status}`,
-          changed_by: req.user.id,
-        },
-        include: {
-          user: {
-            select: {
-              name: true,
-              email: true,
-            },
-          },
-        },
-      });
+      const newStatusResult = await tx
+        .insert(applicationStatus)
+        .values({
+          applicationId: Number(application_id),
+          status: upperStatus,
+          catatan: catatan || `Status diubah menjadi ${upperStatus}`,
+          changedBy: req.user.id,
+        })
+        .returning();
 
-      return { newStatus, slaInfo };
+      const newStatus = newStatusResult[0];
+
+      // Ambil data user untuk response
+      const userDataResult = await tx
+        .select({
+          name: users.name,
+          email: users.email,
+        })
+        .from(users)
+        .where(eq(users.id, req.user.id))
+        .limit(1);
+
+      return {
+        newStatus: {
+          ...newStatus,
+          user: userDataResult[0],
+        },
+        slaInfo,
+      };
     });
 
     return res.status(201).json({
@@ -256,28 +321,41 @@ const createStatus = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Terjadi kesalahan pada server',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
 
-// Update status
+/**
+ * UPDATE STATUS
+ */
 const updateStatus = async (req, res) => {
   try {
+    const { id } = req.params;
     const { status, catatan } = req.body;
-    const statusId = Number(req.params.id);
 
-    // Validasi input
-    if (!status || !catatan) {
+    if (!id || isNaN(Number(id))) {
       return res.status(400).json({
         success: false,
-        message: 'Status dan catatan wajib diisi',
+        message: 'ID status tidak valid',
+      });
+    }
+
+    const statusId = Number(id);
+
+    // Validasi input
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status wajib diisi',
       });
     }
 
     // Validasi status enum
     const validStatuses = ['DIAJUKAN', 'DIPROSES', 'DITERIMA', 'DITOLAK'];
-    if (!validStatuses.includes(status.toUpperCase())) {
+    const upperStatus = status.toUpperCase();
+
+    if (!validStatuses.includes(upperStatus)) {
       return res.status(400).json({
         success: false,
         message: `Status harus salah satu dari: ${validStatuses.join(', ')}`,
@@ -285,49 +363,64 @@ const updateStatus = async (req, res) => {
     }
 
     // Mengambil status yang akan diupdate
-    const existingStatus = await prisma.applicationStatus.findUnique({
-      where: { id: statusId },
-    });
+    const existingStatusResult = await db
+      .select()
+      .from(applicationStatus)
+      .where(eq(applicationStatus.id, statusId))
+      .limit(1);
 
-    if (!existingStatus) {
+    if (existingStatusResult.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Status tidak ditemukan',
       });
     }
 
+    const existingStatus = existingStatusResult[0];
+
     // Transaction untuk update status dan hitung SLA
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       let slaInfo = null;
 
       // Hitung SLA HANYA jika status berubah
-      if (existingStatus.status !== status.toUpperCase()) {
+      if (existingStatus.status !== upperStatus) {
         slaInfo = await calculateSLA(
-          existingStatus.application_id,
-          status.toUpperCase(),
+          existingStatus.applicationId,
+          upperStatus,
           tx
         );
       }
 
       // Update status
-      const updatedStatus = await tx.applicationStatus.update({
-        where: { id: statusId },
-        data: {
-          status: status.toUpperCase(),
-          catatan,
-          changed_by: req.user.id,
-        },
-        include: {
-          user: {
-            select: {
-              name: true,
-              email: true,
-            },
-          },
-        },
-      });
+      const updatedStatusResult = await tx
+        .update(applicationStatus)
+        .set({
+          status: upperStatus,
+          catatan: catatan || existingStatus.catatan,
+          changedBy: req.user.id,
+        })
+        .where(eq(applicationStatus.id, statusId))
+        .returning();
 
-      return { updatedStatus, slaInfo };
+      const updatedStatus = updatedStatusResult[0];
+
+      // Ambil data user untuk response
+      const userDataResult = await tx
+        .select({
+          name: users.name,
+          email: users.email,
+        })
+        .from(users)
+        .where(eq(users.id, req.user.id))
+        .limit(1);
+
+      return {
+        updatedStatus: {
+          ...updatedStatus,
+          user: userDataResult[0],
+        },
+        slaInfo,
+      };
     });
 
     return res.status(200).json({
@@ -341,31 +434,56 @@ const updateStatus = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Terjadi kesalahan pada server',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
 
-// Delete status
+/**
+ * DELETE STATUS
+ */
 const deleteStatus = async (req, res) => {
   try {
-    const statusId = Number(req.params.id);
+    const { id } = req.params;
+
+    if (!id || isNaN(Number(id))) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID status tidak valid',
+      });
+    }
+
+    const statusId = Number(id);
 
     // Cek apakah status ada
-    const existingStatus = await prisma.applicationStatus.findUnique({
-      where: { id: statusId },
-    });
+    const existingStatusResult = await db
+      .select()
+      .from(applicationStatus)
+      .where(eq(applicationStatus.id, statusId))
+      .limit(1);
 
-    if (!existingStatus) {
+    if (existingStatusResult.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Status tidak ditemukan',
       });
     }
 
-    await prisma.applicationStatus.delete({
-      where: { id: statusId },
-    });
+    // Cek apakah ini status pertama (DIAJUKAN) dari aplikasi
+    const allStatuses = await db
+      .select()
+      .from(applicationStatus)
+      .where(eq(applicationStatus.applicationId, existingStatusResult[0].applicationId))
+      .orderBy(asc(applicationStatus.createdAt));
+
+    if (allStatuses.length === 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status terakhir tidak dapat dihapus',
+      });
+    }
+
+    await db.delete(applicationStatus).where(eq(applicationStatus.id, statusId));
 
     return res.status(200).json({
       success: true,
@@ -376,23 +494,52 @@ const deleteStatus = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Terjadi kesalahan pada server',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
 
-// Get SLA by application ID
+/**
+ * GET SLA BY APPLICATION
+ */
 const getSLAByApplication = async (req, res) => {
   try {
-    const applicationId = Number(req.params.id);
+    const { id } = req.params;
 
-    const slaData = await prisma.applicationSLA.findMany({
-      where: { application_id: applicationId },
-      orderBy: { created_at: 'asc' },
-    });
+    if (!id || isNaN(Number(id))) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID aplikasi tidak valid',
+      });
+    }
+
+    const applicationId = Number(id);
+
+    // Cek apakah aplikasi exists
+    const applicationExists = await db
+      .select()
+      .from(creditApplication)
+      .where(eq(creditApplication.id, applicationId))
+      .limit(1);
+
+    if (applicationExists.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pengajuan tidak ditemukan',
+      });
+    }
+
+    const slaData = await db
+      .select()
+      .from(applicationSla)
+      .where(eq(applicationSla.applicationId, applicationId))
+      .orderBy(asc(applicationSla.createdAt));
 
     // Hitung total durasi
-    const totalDuration = slaData.reduce((sum, sla) => sum + sla.duration_minutes, 0);
+    const totalDuration = slaData.reduce(
+      (sum, sla) => sum + (sla.durationMinutes || 0),
+      0
+    );
 
     return res.status(200).json({
       success: true,
@@ -409,25 +556,38 @@ const getSLAByApplication = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Terjadi kesalahan pada server',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
 
-// Get all SLA - untuk monitoring
+/**
+ * GET ALL SLA - Untuk monitoring
+ */
 const getAllSLA = async (req, res) => {
   try {
-    const slaData = await prisma.applicationSLA.findMany({
-      include: {
+    const slaData = await db
+      .select({
+        id: applicationSla.id,
+        application_id: applicationSla.applicationId,
+        from_status: applicationSla.fromStatus,
+        to_status: applicationSla.toStatus,
+        start_time: applicationSla.startTime,
+        end_time: applicationSla.endTime,
+        duration_minutes: applicationSla.durationMinutes,
+        catatan: applicationSla.catatan,
+        created_at: applicationSla.createdAt,
         application: {
-          select: {
-            kode_pengajuan: true,
-            nama_lengkap: true,
-          },
+          kode_pengajuan: creditApplication.kodePengajuan,
+          nama_lengkap: creditApplication.namaLengkap,
         },
-      },
-      orderBy: { created_at: 'desc' },
-    });
+      })
+      .from(applicationSla)
+      .leftJoin(
+        creditApplication,
+        eq(applicationSla.applicationId, creditApplication.id)
+      )
+      .orderBy(desc(applicationSla.createdAt));
 
     return res.status(200).json({
       success: true,
@@ -439,7 +599,7 @@ const getAllSLA = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Terjadi kesalahan pada server',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
@@ -451,5 +611,5 @@ module.exports = {
   updateStatus,
   deleteStatus,
   getSLAByApplication,
-  getAllSLA
+  getAllSLA,
 };

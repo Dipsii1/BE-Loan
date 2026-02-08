@@ -1,14 +1,17 @@
+try { require("dotenv").config(); } catch (_) {}
 const createError = require("http-errors");
 const express = require("express");
 const cookieParser = require("cookie-parser");
 const logger = require("morgan");
 const cors = require("cors");
 
-// Router
+const { pool } = require("./src/lib/db");
+
+// Routes
 const indexRouter = require("./src/routes/index");
 const usersRouter = require("./src/routes/users");
-const authRouter = require("./src/routes/authRoutes")
-const creditApplicationsRouter = require("./src/routes/creditAplications"); 
+const authRouter = require("./src/routes/authRoutes");
+const creditApplicationsRouter = require("./src/routes/creditAplications");
 const statusApplicationsRouter = require("./src/routes/applicationStatus");
 
 const app = express();
@@ -22,9 +25,9 @@ app.use(cookieParser());
 // CORS
 const allowedOrigins = [
   "http://localhost:3000",
+  "https://satufin.id",
   "https://loan-mu-nine.vercel.app",
-  "https://orangered-dragonfly-199687.hostingersite.com/"
-  
+  "https://orangered-dragonfly-199687.hostingersite.com"
 ];
 
 app.use(cors({
@@ -38,29 +41,30 @@ app.use(cors({
   credentials: true
 }));
 
-app.options("*", cors());
-
 // Disable caching
 app.use((req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
-  res.setHeader("Pragma", "no-cache");
-  res.setHeader("Expires", "0");
   next();
+});
+
+// Healthcheck
+app.get("/health", (req, res) => {
+  res.json({ status: "OK" });
 });
 
 // Routes
 app.use("/", indexRouter);
 app.use("/api/v1/users", usersRouter);
-app.use("/api/v1/auth", authRouter)
+app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/credit-applications", creditApplicationsRouter);
 app.use("/api/v1/application-status", statusApplicationsRouter);
 
-// 404 Handler
+// 404
 app.use((req, res, next) => {
   next(createError(404, "Endpoint tidak ditemukan"));
 });
 
-// Error Handler
+// Error handler
 app.use((err, req, res, next) => {
   res.status(err.status || 500).json({
     error: true,
@@ -68,7 +72,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`✅ Server berjalan di port ${PORT}`);
