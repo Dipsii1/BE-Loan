@@ -1,27 +1,26 @@
-const {
-  pgTable,
-  serial,
-  integer,
+import {
+  mysqlTable,
+  int,
   timestamp,
   varchar,
   index
-} = require("drizzle-orm/pg-core");
+} from 'drizzle-orm/mysql-core';
 
-const { creditApplication } = require("./creditApplication");
-const { statusKreditEnum } = require("./enums");
+import { creditApplication } from './creditApplication.js';
+import { statusKreditEnum } from './enums.js';
 
-exports.applicationSla = pgTable(
+export const applicationSla = mysqlTable(
   "application_sla",
   {
-    id: serial("id").primaryKey(),
-    applicationId: integer("application_id")
+    id: int("id").primaryKey().autoincrement(),
+    applicationId: int("application_id")
       .notNull()
       .references(() => creditApplication.id, { onDelete: "cascade" }),
-    fromStatus: statusKreditEnum("from_status").notNull(),
-    toStatus: statusKreditEnum("to_status").notNull(),
+    fromStatus: statusKreditEnum.notNull(),
+    toStatus: statusKreditEnum.notNull(),
     startTime: timestamp("start_time").notNull(),
     endTime: timestamp("end_time").notNull(),
-    durationMinutes: integer("duration_minutes").notNull(),
+    durationMinutes: int("duration_minutes").notNull(),
     catatan: varchar("catatan", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow()
   },

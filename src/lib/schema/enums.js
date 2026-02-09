@@ -1,25 +1,33 @@
-const { pgEnum } = require("drizzle-orm/pg-core");
+const { mysqlEnum } = require('drizzle-orm/mysql-core');
 
-exports.jenisKreditEnum = pgEnum("jenis_kredit", [
+const jenisKreditEnum = mysqlEnum("jenis_kredit", [
   "KREDIT_PRODUKTIF",
   "MULTIGUNA",
   "KPR",
   "PENSIUN"
 ]);
 
-exports.jaminanEnum = pgEnum("jaminan", [
+const jaminanEnum = mysqlEnum("jaminan", [
   "SERTIFIKAT",
   "BPKB",
   "SK_PEGAWAI"
 ]);
 
-exports.statusKreditEnum = pgEnum("status_kredit", [
+const statusKreditEnum = mysqlEnum("status_kredit", [
   "DIAJUKAN",
   "DIPROSES",
   "DITERIMA",
   "DITOLAK"
 ]);
 
-exports.jenisKelaminEnum = pgEnum("jenis_kelamin", ["L", "P"]);
+const jenisKelaminEnum = mysqlEnum("jenis_kelamin", ["L", "P"]);
 
-exports.statusAkunEnum = pgEnum("status_akun", ["AKTIF", "NONAKTIF"]);
+const statusAkunEnum = mysqlEnum("status_akun", ["AKTIF", "NONAKTIF"]);
+
+module.exports = {
+  jenisKreditEnum,
+  jaminanEnum,
+  statusKreditEnum,
+  jenisKelaminEnum,
+  statusAkunEnum
+};

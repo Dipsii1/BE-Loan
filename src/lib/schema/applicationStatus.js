@@ -1,26 +1,25 @@
-const {
-  pgTable,
-  serial,
-  integer,
+import {
+  mysqlTable,
+  int,
   timestamp,
   index,
   varchar
-} = require("drizzle-orm/pg-core");
+} from 'drizzle-orm/mysql-core';
 
-const { creditApplication } = require("./creditApplication");
-const { users } = require("./users");
-const { statusKreditEnum } = require("./enums");
+import { creditApplication } from './creditApplication.js';
+import { users } from './users.js';
+import { statusKreditEnum } from './enums.js';
 
-exports.applicationStatus = pgTable(
+export const applicationStatus = mysqlTable(
   "application_status",
   {
-    id: serial("id").primaryKey(),
+    id: int("id").primaryKey().autoincrement(),
 
-    applicationId: integer("application_id")
+    applicationId: int("application_id")
       .notNull()
       .references(() => creditApplication.id),
 
-    status: statusKreditEnum("status").notNull(),
+    status: statusKreditEnum.notNull(),
 
     catatan: varchar("catatan", { length: 255 }),
 

@@ -1,6 +1,8 @@
-const { pgTable, serial, varchar } = require("drizzle-orm/pg-core");
+const { mysqlTable, int, varchar } = require('drizzle-orm/mysql-core');
 
-exports.roles = pgTable("roles", {
-  id: serial("id").primaryKey(),
+const roles = mysqlTable("roles", {
+  id: int("id").primaryKey().autoincrement(),
   namaRole: varchar("nama_role", { length: 50 }).notNull().unique()
 });
+
+module.exports = { roles };

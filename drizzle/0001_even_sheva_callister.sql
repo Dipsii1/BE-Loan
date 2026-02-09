@@ -1,1 +1,0 @@
-ALTER TABLE "credit_application" ALTER COLUMN "user_id" SET DATA TYPE varchar(36);

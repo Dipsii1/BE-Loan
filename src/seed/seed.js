@@ -5,7 +5,7 @@ const { creditApplication } = require('../lib/schema/creditApplication');
 const { applicationStatus } = require('../lib/schema/applicationStatus');
 const { applicationSla } = require('../lib/schema/applicationSLA');
 const bcrypt = require('bcrypt');
-const { sql } = require('drizzle-orm');
+const { sql, eq, inArray } = require('drizzle-orm');
 
 async function main() {
   console.log('🌱 Starting seed...');
@@ -21,14 +21,12 @@ async function main() {
 
     // Seed Roles
     console.log('📝 Seeding roles...');
-    const rolesData = await db
-      .insert(roles)
-      .values([
-        { id: 1, namaRole: 'Admin', deskripsi: 'Administrator sistem' },
-        { id: 2, namaRole: 'Agent', deskripsi: 'Agent kredit' },
-        { id: 3, namaRole: 'Nasabah', deskripsi: 'Nasabah peminjam' },
-      ])
-      .returning();
+    await db.insert(roles).values([
+      { id: 1, namaRole: 'Admin', deskripsi: 'Administrator sistem' },
+      { id: 2, namaRole: 'Agent', deskripsi: 'Agent kredit' },
+      { id: 3, namaRole: 'Nasabah', deskripsi: 'Nasabah peminjam' },
+    ]);
+    const rolesData = await db.select().from(roles);
     console.log(`✅ Created ${rolesData.length} roles`);
 
     // Seed Users (with hashed passwords)
@@ -86,7 +84,8 @@ async function main() {
       },
     ];
 
-    const createdUsers = await db.insert(users).values(usersData).returning();
+    await db.insert(users).values(usersData);
+    const createdUsers = await db.select().from(users);
     console.log(
       `✅ Created ${createdUsers.length} users (password for all: password123)`
     );
@@ -144,10 +143,8 @@ async function main() {
       },
     ];
 
-    const createdApplications = await db
-      .insert(creditApplication)
-      .values(applicationsData)
-      .returning();
+    await db.insert(creditApplication).values(applicationsData);
+    const createdApplications = await db.select().from(creditApplication);
     console.log(`✅ Created ${createdApplications.length} credit applications`);
 
     // Seed Application Status
@@ -211,10 +208,8 @@ async function main() {
       },
     ];
 
-    const createdStatuses = await db
-      .insert(applicationStatus)
-      .values(statusesData)
-      .returning();
+    await db.insert(applicationStatus).values(statusesData);
+    const createdStatuses = await db.select().from(applicationStatus);
     console.log(`✅ Created ${createdStatuses.length} application statuses`);
 
     console.log('✨ Seed completed successfully!');
