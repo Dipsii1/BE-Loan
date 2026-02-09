@@ -25,9 +25,7 @@ app.use(cookieParser());
 // CORS
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://satufin.id",
-  "https://loan-mu-nine.vercel.app",
-  "https://orangered-dragonfly-199687.hostingersite.com"
+  "https://satufin.id"
 ];
 
 app.use(cors({
